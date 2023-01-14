@@ -1,5 +1,9 @@
 import {
-  CompletionBody, CreateEventArgs, EngineContext, GetEventArgs, MagickWorkerInputs
+  CompletionBody,
+  CreateEventArgs,
+  EngineContext,
+  GetEventArgs,
+  MagickWorkerInputs,
 } from '@magickml/core'
 import { prisma } from '@magickml/prisma'
 import vm2 from 'vm2'
@@ -11,6 +15,12 @@ import { searchWikipedia } from '../wikipedia/helpers'
 import { database } from '@magickml/database'
 import { makeCompletion } from '../../utils/MakeCompletionRequest'
 import { runSpell } from '../utils/runSpell'
+import {
+  API_ROOT_URL,
+  API_URL,
+  APP_SEARCH_SERVER_URL,
+  OPENAI_API_KEY,
+} from '@magickml/server-config'
 
 import run_python from '../../../../../packages/core/src/ProcessPython'
 
@@ -58,8 +68,14 @@ export const buildMagickInterface = (
 ): EngineContext => {
   // eslint-disable-next-line functional/no-let
   let gameState = { ...initialGameState }
+  const env = {
+    API_ROOT_URL,
+    API_URL,
+    APP_SEARCH_SERVER_URL,
+  }
 
   return {
+    env,
     runSpell: async (flattenedInputs, spellId, state) => {
       const { outputs } = await runSpell({
         state,
@@ -73,9 +89,7 @@ export const buildMagickInterface = (
     },
     completion: async (body: CompletionBody) => {
       // check body for API key, otherwise use the environment
-      const openaiApiKey = body.apiKey
-        ? body.apiKey
-        : process.env.OPENAI_API_KEY
+      const openaiApiKey = body.apiKey ? body.apiKey : OPENAI_API_KEY
 
       if (!openaiApiKey) throw new Error('No API key provided')
 
@@ -94,13 +108,7 @@ export const buildMagickInterface = (
     },
     getSpell: async spellId => {
       const spell = await prisma.spells.findUnique({ where: { name: spellId } })
-      if(spell) {
-        // spell.graph, spell.modules and spell.gameState are all JSON
-        // parse them back into the object before returning it
-        spell.graph = JSON.parse(spell.graph as any)
-        spell.modules = JSON.parse(spell.modules as any)
-        spell.gameState = JSON.parse(spell.gameState as any)
-      }
+
       return spell
     },
     queryGoogle: async query => {

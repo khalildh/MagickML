@@ -1,6 +1,5 @@
 import { database } from '@magickml/database'
 import 'regenerator-runtime/runtime'
-//@ts-ignore
 // import weaviate from 'weaviate-client'
 import Koa from 'koa'
 import 'regenerator-runtime/runtime'
@@ -11,12 +10,13 @@ import { queryGoogleSearch } from '../routes/utils/queryGoogle'
 import { tts, tts_tiktalknet } from '@magickml/systems'
 import { prisma } from '@magickml/prisma'
 import { CustomError } from '../utils/CustomError'
+import { OPENAI_API_KEY } from '@magickml/server-config'
 
 export const modules: Record<string, unknown> = {}
 
 const getEntitiesHandler = async (ctx: Koa.Context) => {
   try {
-    let data = await database.getEntities()
+    let data = await prisma.entities.findMany()
     return (ctx.body = data)
   } catch (e) {
     console.log('getEntitiesHandler:', e)
@@ -40,7 +40,7 @@ const getEntityHandler = async (ctx: Koa.Context) => {
 
   const _instanceId = parseInt(instanceId)
   try {
-    let data = await database.getEntity(_instanceId) as any
+    let data = (await database.getEntity(_instanceId)) as any
     if (data === undefined || !data) {
       let newId = _instanceId
       while ((await database.entityExists(newId)) || newId <= 0) {
@@ -52,6 +52,7 @@ const getEntityHandler = async (ctx: Koa.Context) => {
         enabled: true,
       }
     }
+
     return (ctx.body = data)
   } catch (e) {
     console.log('getEntityHandler:', e)
@@ -62,14 +63,10 @@ const getEntityHandler = async (ctx: Koa.Context) => {
 
 const addEntityHandler = async (ctx: Koa.Context) => {
   const data = ctx.request.body
-  if(!data.data) {
-    data.data = ""
+  if (!data.data) {
+    data.data = ''
     data.dirty = true
     data.enabled = false
-  }
-
-  if (typeof data.data === 'object') {
-    data.data = JSON.stringify(data.data)
   }
 
   const entity = await prisma.entities.findFirst({
@@ -80,24 +77,22 @@ const addEntityHandler = async (ctx: Koa.Context) => {
 
   // if entity exists, update it
   if (entity) {
-    await prisma.entities.update({
+    const entity = await prisma.entities.update({
       where: {
         id: data.id,
       },
       data: {
         id: data.id,
         data: data.data as string,
-        dirty: data.dirty,
+        dirty: true,
         enabled: data.enabled,
       },
     })
-    return (ctx.body = { id: data.id })
+
+    return (ctx.body = entity)
   }
 
   try {
-    console.log('updated agent database with', data)
-    // if data.data is an object, stringify it
-
     return (ctx.body = await prisma.entities.create({ data }))
   } catch (e) {
     console.log('addEntityHandler:', e)
@@ -266,8 +261,7 @@ const textCompletion = async (ctx: Koa.Context) => {
     .replace('{agent}', agent)
     .replace('{speaker}', sender)
   let stop = (ctx.request.body.stop ?? ['']) as string[]
-  const openaiApiKey =
-    (ctx.request.body.apiKey as string) ?? process.env.OPENAI_API_KEY
+  const openaiApiKey = (ctx.request.body.apiKey as string) ?? OPENAI_API_KEY
 
   if (!openaiApiKey)
     throw new CustomError('authentication-error', 'No API key provided')
